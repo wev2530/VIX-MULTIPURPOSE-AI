@@ -39,11 +39,11 @@ const MAX_MESSAGES = 30;
 const MAX_CHARS = 8000;
 const TIMEOUT_MS = 25000; // Netlify functions have a short default timeout; keep replies within it.
 
-const json = (statusCode, body) => ({
-  statusCode,
-  headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  body: JSON.stringify(body),
-});
+const json = (status, body) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
 
 async function verifyUser(authHeader) {
   const token = (authHeader || "").replace(/^Bearer\s+/i, "");
@@ -141,15 +141,15 @@ function callModel(messages) {
   return (process.env.MODEL_BACKEND || "gradio") === "openai" ? callOpenAI(messages) : callGradio(messages);
 }
 
-exports.handler = async (event) => {
-  if (event.httpMethod !== "POST") return json(405, { error: "Use POST." });
+export default async (req) => {
+  if (req.method !== "POST") return json(405, { error: "Use POST." });
 
   try {
-    const user = await verifyUser(event.headers.authorization || event.headers.Authorization);
+    const user = await verifyUser(req.headers.get("authorization"));
     if (!user) return json(401, { error: "Please sign in again." });
 
     let body;
-    try { body = JSON.parse(event.body || "{}"); } catch { return json(400, { error: "Invalid request." }); }
+    try { body = JSON.parse((await req.text()) || "{}"); } catch { return json(400, { error: "Invalid request." }); }
 
     const messages = (Array.isArray(body.messages) ? body.messages : [])
       .filter((m) => m && ["user", "assistant"].includes(m.role) && typeof m.content === "string" && m.content.trim())
