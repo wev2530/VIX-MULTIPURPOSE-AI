@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Log in – VIX AI</title>
+<meta name="theme-color" content="#0a0a0a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/vix-logo.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/auth.css">
+</head>
+<body data-page="login">
+<main class="auth"><div class="auth-card">
+<div class="auth-brand"><img src="/assets/vix-logo.png" alt="" width="44" height="44">VIX AI</div>
+<h1>Welcome back</h1>
+<p class="sub">Log in to continue to VIX AI.</p>
+<div id="notice" class="notice" hidden role="status"></div>
+<form id="form" novalidate>
+<div class="field"><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required></div>
+<div class="field"><label for="password">Password</label><div class="pw"><input id="password" name="password" type="password" autocomplete="current-password" required><button type="button" data-toggle-pw="password" aria-label="Show password">Show</button></div></div>
+<button class="btn primary" type="submit" id="submit">Log in</button>
+</form>
+<div class="divider">or</div>
+<button class="btn google" type="button" id="googleBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M12 12h8"/></svg>Continue with Google</button>
+<div class="links"><a href="/pages/forgot.html">Forgot password?</a><span>No account? <a href="/pages/signup.html">Sign up</a></span></div>
+</div></main>
+<script type="module" src="/js/auth.js"></script>
+</body>
+</html>

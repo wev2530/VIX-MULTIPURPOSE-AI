@@ -1,0 +1,23 @@
+/* VIX AI – login / signup / forgot / reset pages. Reuses tokens from styles.css. */
+.auth { min-height: 100dvh; display: grid; place-items: center; padding: calc(var(--sat) + 24px) 20px calc(var(--sab) + 24px); }
+.auth-card { width: 100%; max-width: 400px; }
+.auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; font-weight: 650; font-size: 1.1rem; }
+.auth-brand img { width: 44px; height: 44px; border-radius: 12px; }
+.auth h1 { margin: 0 0 6px; font-size: 1.75rem; letter-spacing: -.02em; }
+.auth .sub { margin: 0 0 24px; color: var(--muted); }
+.pw { position: relative; }
+.pw input { padding-right: 64px; }
+.pw button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 6px 10px; font-size: .84rem; color: var(--muted); }
+.pw button:hover { color: var(--text); }
+.auth .btn { width: 100%; padding: 12px 16px; }
+.auth .btn[disabled] { opacity: .6; cursor: default; }
+.divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--muted); font-size: .84rem; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.google { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.google svg { width: 18px; height: 18px; }
+.links { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; font-size: .92rem; color: var(--muted); flex-wrap: wrap; }
+.links a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.links a:hover { color: var(--red); }
+.notice { padding: 11px 13px; border-radius: 10px; margin-bottom: 16px; font-size: .92rem; border: 1px solid var(--line); background: var(--surface); }
+.notice.error { border-color: #6b1b22; color: #ff8b94; }
+.notice.ok { border-left: 3px solid var(--red); }
