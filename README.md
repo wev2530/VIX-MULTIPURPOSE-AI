@@ -10,7 +10,7 @@ Netlify Function so no model or database secret ever reaches the browser.
 
 - **Frontend** — plain HTML/CSS/JS (ES modules), no build step. `css/`, `js/`, `pages/`.
 - **Auth + database** — Supabase (Auth, Postgres, Row Level Security).
-- **AI backend** — a Netlify Function (`netlify/functions/chat.js`) that verifies the caller's
+- **AI backend** — a Netlify Function (`netlify/functions/chat.mjs`) that verifies the caller's
   Supabase session, then calls your Hugging Face Space. The frontend only ever talks to `/api/chat`,
   so the backend can be swapped later without touching the UI.
 - **PWA** — `manifest.webmanifest` + `sw.js` (offline app shell; API calls are never cached).
@@ -43,7 +43,7 @@ VIX-MULTIPURPOSE-AI/
 │   └── brand/                            Original logo files you supplied, for reference:
 │       ├── vix-logo-lockup-dark.png / vix-logo-lockup-light.png   full logo + wordmark
 │       └── mark-transparent-dark.png / mark-transparent-light.png  mark only, transparent background
-└── netlify/functions/chat.js   Secure server-side call to the AI backend
+└── netlify/functions/chat.mjs   Secure server-side call to the AI backend
 ```
 
 ## Replacing the logo later
@@ -77,7 +77,7 @@ this project.**
 
 ## AI backend
 
-`netlify/functions/chat.js` is the only thing that talks to the model. It's configured for
+`netlify/functions/chat.mjs` is the only thing that talks to the model. It's configured for
 **`vg253044/Vix_AI`** — I pulled its actual `app.py` from the Hub, so this isn't guesswork:
 
 ```python
@@ -113,7 +113,7 @@ again after the Space has had a few seconds to spin up (visit the Space's page d
 it, or just retry in the app — the message won't be lost, there's a Retry button).
 
 Swapping to a different backend entirely later only means editing `callModel()` in
-`netlify/functions/chat.js`.
+`netlify/functions/chat.mjs`.
 
 ## Setup after downloading
 
