@@ -13,11 +13,19 @@
  *   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY   – to verify the user's session
  *   MODEL_BACKEND   "gradio" (default) | "openai"
  *   -- gradio (Hugging Face Space) --
- *   HF_SPACE_URL    e.g. https://vg253044-vix-ai.hf.space
- *   HF_API_NAME     endpoint name shown on the Space's "Use via API" page (default "chat")
- *   HF_API_PREFIX   default "/gradio_api" (Gradio 5). Use "" for older Gradio 4 Spaces.
- *   HF_PAYLOAD      "message" (default) | "transcript" | "message_history"
- *   HF_TOKEN        only if the Space is private
+ *   HF_SPACE_URL     e.g. https://vg253044-vix-ai.hf.space (the vg253044/Vix_AI Space)
+ *   HF_API_NAME      endpoint name from the Space's "Use via API" page. Vix_AI wires its
+ *                    chat_fn to two events (a button click and a textbox submit) without an
+ *                    explicit api_name, so Gradio auto-names them "chat_fn" and "chat_fn_1" —
+ *                    "chat_fn" (the default here) is the first-registered one and should work,
+ *                    but confirm on that page if replies fail with a 404/"not found" error.
+ *   HF_API_PREFIX    default "/gradio_api" (Gradio 5). Use "" for older Gradio 4 Spaces.
+ *   HF_PAYLOAD       "vix" (default, matches vg253044/Vix_AI: chat_fn(message, history,
+ *                     max_tokens, temperature), reply read from the returned history) |
+ *                     "history_maxtokens" (message, history, max_tokens) | "message" | "transcript"
+ *   HF_MAX_TOKENS    default 1024 (Vix_AI's slider default)
+ *   HF_TEMPERATURE   default 0.3 (Vix_AI's example rows use 0.2–0.3)
+ *   HF_TOKEN         only if the Space is private
  *   -- openai (any OpenAI-compatible endpoint, e.g. HF Inference Endpoints) --
  *   MODEL_BASE_URL, MODEL_NAME, MODEL_API_KEY
  */
@@ -67,24 +75,27 @@ async function callGradio(messages) {
   const base = (process.env.HF_SPACE_URL || "").replace(/\/$/, "");
   if (!base) throw new Error("HF_SPACE_URL is not set.");
   const prefix = process.env.HF_API_PREFIX ?? "/gradio_api";
-  const api = (process.env.HF_API_NAME || "chat").replace(/^\//, "");
+  const api = (process.env.HF_API_NAME || "chat_fn").replace(/^\//, "");
   const url = `${base}${prefix}/call/${api}`;
   const headers = { "Content-Type": "application/json" };
   if (process.env.HF_TOKEN) headers.Authorization = `Bearer ${process.env.HF_TOKEN}`;
 
   const last = messages[messages.length - 1].content;
-  const mode = process.env.HF_PAYLOAD || "message";
+  const history = messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
+  const maxTokens = Number(process.env.HF_MAX_TOKENS || 1024);
+  const temperature = Number(process.env.HF_TEMPERATURE ?? 0.3);
+
+  const mode = process.env.HF_PAYLOAD || "vix";
   let data;
   if (mode === "transcript") {
     data = [messages.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n") + "\nAssistant:"];
-  } else if (mode === "message_history") {
-    const pairs = [];
-    for (let i = 0; i < messages.length - 1; i++) {
-      if (messages[i].role === "user" && messages[i + 1]?.role === "assistant") pairs.push([messages[i].content, messages[i + 1].content]);
-    }
-    data = [last, pairs];
-  } else {
+  } else if (mode === "history_maxtokens") {
+    data = [last, history, maxTokens];
+  } else if (mode === "message") {
     data = [last];
+  } else {
+    // "vix" (default): vg253044/Vix_AI's chat_fn(message, history, max_tokens, temperature)
+    data = [last, history, maxTokens, temperature];
   }
 
   const start = await fetch(url, { method: "POST", headers, body: JSON.stringify({ data }), signal: AbortSignal.timeout(TIMEOUT_MS) });
