@@ -10,10 +10,11 @@
  * The frontend keeps talking to /api/chat and never changes.
  *
  * Environment variables (Netlify > Site configuration > Environment variables):
- *   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY   – to verify the user's session
+ *   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY   – to verify the user's session (optional: falls back
+ *                                              to the public values in js/config.js)
  *   MODEL_BACKEND   "gradio" (default) | "openai"
  *   -- gradio (Hugging Face Space) --
- *   HF_SPACE_URL     e.g. https://vg253044-vix-ai.hf.space (the vg253044/Vix_AI Space)
+ *   HF_SPACE_URL     default https://vg253044-vix-ai.hf.space (the vg253044/Vix_AI Space)
  *   HF_API_NAME      endpoint name from the Space's "Use via API" page. Vix_AI wires its
  *                    chat_fn to two events (a button click and a textbox submit) without an
  *                    explicit api_name, so Gradio auto-names them "chat_fn" and "chat_fn_1" —
@@ -30,6 +31,10 @@
  *   MODEL_BASE_URL, MODEL_NAME, MODEL_API_KEY
  */
 
+import { SUPABASE_URL as PUBLIC_SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY as PUBLIC_SUPABASE_KEY } from "../../js/config.js";
+
+const DEFAULT_HF_SPACE_URL = "https://vg253044-vix-ai.hf.space";
+
 const SYSTEM_PROMPT =
   "You are VIX AI, a professional multipurpose assistant. You reason carefully and help with " +
   "mathematics, science, engineering, mechatronics, programming, technology, education and general knowledge. " +
@@ -37,7 +42,8 @@ const SYSTEM_PROMPT =
 
 const MAX_MESSAGES = 30;
 const MAX_CHARS = 8000;
-const TIMEOUT_MS = 25000; // Netlify functions have a short default timeout; keep replies within it.
+const START_TIMEOUT_MS = 10000;
+const TIMEOUT_MS = 40000; // The ZeroGPU Space takes ~30s per reply; stay within Netlify's 60s sync limit.
 
 const json = (status, body) =>
   new Response(JSON.stringify(body), {
@@ -48,7 +54,8 @@ const json = (status, body) =>
 async function verifyUser(authHeader) {
   const token = (authHeader || "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
-  const { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } = process.env;
+  const SUPABASE_URL = process.env.SUPABASE_URL || PUBLIC_SUPABASE_URL;
+  const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || PUBLIC_SUPABASE_KEY;
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) throw new Error("Server auth is not configured.");
   const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_PUBLISHABLE_KEY },
@@ -72,7 +79,7 @@ function extractText(value) {
 }
 
 async function callGradio(messages) {
-  const base = (process.env.HF_SPACE_URL || "").replace(/\/$/, "");
+  const base = (process.env.HF_SPACE_URL || DEFAULT_HF_SPACE_URL).replace(/\/$/, "");
   if (!base) throw new Error("HF_SPACE_URL is not set.");
   const prefix = process.env.HF_API_PREFIX ?? "/gradio_api";
   const api = (process.env.HF_API_NAME || "chat_fn").replace(/^\//, "");
@@ -98,7 +105,7 @@ async function callGradio(messages) {
     data = [last, history, maxTokens, temperature];
   }
 
-  const start = await fetch(url, { method: "POST", headers, body: JSON.stringify({ data }), signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const start = await fetch(url, { method: "POST", headers, body: JSON.stringify({ data }), signal: AbortSignal.timeout(START_TIMEOUT_MS) });
   if (!start.ok) throw new Error(`Model Space returned ${start.status} when starting the request.`);
   const { event_id } = await start.json();
 
