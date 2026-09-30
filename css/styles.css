@@ -90,7 +90,8 @@ button { cursor: pointer; background: none; border: 0; }
 .empty img { width: 56px; height: 56px; border-radius: 15px; margin-bottom: 18px; }
 .empty h2 { margin: 0 0 6px; font-size: 1.7rem; font-weight: 650; letter-spacing: -.02em; }
 .empty p { margin: 0 0 22px; color: var(--muted); max-width: 46ch; }
-.starters { display: grid; gap: 8px; }
+.starters { display: grid; gap: 8px; transition: opacity .3s ease; }
+.starters.swap { opacity: 0; }
 .starters button { text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; color: var(--text); background: var(--surface); }
 .starters button:hover { border-color: #4a4a4f; }
 

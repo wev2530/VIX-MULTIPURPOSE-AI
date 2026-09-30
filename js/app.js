@@ -38,6 +38,7 @@ async function boot() {
   window.addEventListener("offline", () => setOnlineStatus(false));
 
   renderCapabilities();
+  renderThread();
   await refreshHistory();
 
   $("splash").classList.add("done");
@@ -128,6 +129,81 @@ function messageNode(role, content, opts = {}) {
 
 function scrollToBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
 
+// ---------- Rotating starter prompts (empty-state only) ----------
+const STARTER_PROMPTS = [
+  { label: "Explain how a PID controller works", prompt: "Explain how a PID controller works and where I'd tune it on a small robot." },
+  { label: "Solve a system of linear equations", prompt: "Walk me through solving a system of linear equations step by step." },
+  { label: "Review a debounce function for bugs", prompt: "Review this idea for bugs and edge cases: a function that debounces API calls." },
+  { label: "Build me a 6-week calculus study plan", prompt: "Give me a clear study plan to relearn calculus in 6 weeks." },
+  { label: "Explain gear reduction in a drivetrain", prompt: "Explain how gear reduction works in a robotics drivetrain, with a worked torque example." },
+  { label: "Debug a Python recursion error", prompt: "Help me debug a Python function that hits RecursionError — what usually causes it and how do I fix it?" },
+  { label: "Summarize how neural networks learn", prompt: "Summarize, in plain language, how a neural network actually learns from data." },
+  { label: "Compare series vs. parallel circuits", prompt: "Compare series and parallel circuits, with a simple example of when to use each." },
+  { label: "Explain Big O notation with examples", prompt: "Explain Big O notation with a few concrete, worked examples." },
+  { label: "Outline a mechatronics capstone project", prompt: "Outline a beginner-friendly mechatronics capstone project I could build in a semester." },
+  { label: "Derive the quadratic formula", prompt: "Derive the quadratic formula step by step from completing the square." },
+  { label: "Explain REST vs. GraphQL APIs", prompt: "Explain the practical differences between REST and GraphQL APIs, and when I'd pick each." },
+  { label: "Explain Newton's three laws of motion", prompt: "Explain Newton's three laws of motion with a everyday example for each." },
+  { label: "Walk through binary search step by step", prompt: "Walk me through how binary search works on a sorted array, step by step." },
+  { label: "Explain the difference between AC and DC", prompt: "Explain the practical difference between AC and DC current, and where each is used." },
+  { label: "Help me plan a simple Arduino project", prompt: "Suggest a simple beginner Arduino project that teaches sensors and motors together." },
+  { label: "Explain how HTTPS keeps data secure", prompt: "Explain how HTTPS actually keeps data secure, in plain language." },
+  { label: "Break down the water cycle", prompt: "Break down the water cycle and explain each stage simply." },
+  { label: "Explain torque vs. horsepower", prompt: "Explain the difference between torque and horsepower with a real-world analogy." },
+  { label: "Teach me the basics of recursion", prompt: "Teach me the basics of recursion in programming with a simple worked example." },
+  { label: "Explain how a car's suspension works", prompt: "Explain how a car's suspension system works and why it matters." },
+  { label: "Help me understand Ohm's law", prompt: "Help me understand Ohm's law with a simple circuit example." },
+  { label: "Explain the difference between arrays and linked lists", prompt: "Explain the practical differences between arrays and linked lists, with when to use each." },
+  { label: "Summarize the scientific method", prompt: "Summarize the scientific method as a clear step-by-step process." },
+  { label: "Explain what a microcontroller does", prompt: "Explain what a microcontroller does and how it differs from a regular CPU." },
+  { label: "Help me write a study schedule for finals", prompt: "Help me build a realistic one-week study schedule for final exams." },
+  { label: "Explain how sorting algorithms compare", prompt: "Compare bubble sort, merge sort and quicksort in terms of speed and use cases." },
+  { label: "Explain the basics of thermodynamics", prompt: "Explain the basics of the first and second laws of thermodynamics simply." },
+  { label: "Explain how a database index speeds up queries", prompt: "Explain how a database index actually speeds up queries, and its trade-offs." },
+  { label: "Explain projectile motion with an example", prompt: "Explain projectile motion and walk through a worked example." },
+  { label: "Explain the difference between voltage and current", prompt: "Explain the difference between voltage and current using a water-pipe analogy." },
+  { label: "Help me understand Git branching", prompt: "Help me understand Git branching and merging with a simple example workflow." },
+  { label: "Explain how a 3D printer works", prompt: "Explain how an FDM 3D printer works, step by step." },
+  { label: "Explain entropy in simple terms", prompt: "Explain entropy in simple, intuitive terms with an everyday example." },
+  { label: "Help me understand Big-O for recursive functions", prompt: "Help me understand how to calculate Big-O time complexity for a recursive function." },
+  { label: "Explain how sensors measure distance", prompt: "Explain how ultrasonic and infrared distance sensors work, and when to use each." },
+];
+let starterTimer = null, starterQueue = [];
+
+function shuffledPool() {
+  const pool = [...STARTER_PROMPTS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool;
+}
+function nextStarterBatch() {
+  if (starterQueue.length < 4) starterQueue = shuffledPool();
+  return starterQueue.splice(0, 4);
+}
+function paintStarters() {
+  const el = $("starters");
+  el.innerHTML = nextStarterBatch().map((s) => `<button type="button" data-prompt="${escapeHtml(s.prompt)}">${escapeHtml(s.label)}</button>`).join("");
+}
+function startStarterRotation() {
+  if (starterTimer) return;
+  paintStarters();
+  starterTimer = setInterval(() => {
+    const el = $("starters");
+    el.classList.add("swap");
+    setTimeout(() => { paintStarters(); el.classList.remove("swap"); }, 300);
+  }, 15000);
+}
+function stopStarterRotation() {
+  clearInterval(starterTimer);
+  starterTimer = null;
+}
+$("starters").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-prompt]");
+  if (btn) submitMessage(btn.dataset.prompt);
+});
+
 function renderThread() {
   thread.innerHTML = "";
   const hasMessages = messages.length > 0;
@@ -135,6 +211,7 @@ function renderThread() {
   thread.hidden = !hasMessages;
   messages.forEach((m) => thread.appendChild(messageNode(m.role, m.content)));
   scrollToBottom();
+  if (hasMessages) stopStarterRotation(); else startStarterRotation();
 }
 
 function addThinking() {
@@ -211,7 +288,6 @@ composerInput.addEventListener("keydown", (e) => {
   composerForm.requestSubmit();
 });
 composerForm.addEventListener("submit", (e) => { e.preventDefault(); submitMessage(composerInput.value); });
-document.querySelectorAll("#starters button").forEach((b) => b.addEventListener("click", () => submitMessage(b.dataset.prompt)));
 
 $("newChatBtn").addEventListener("click", () => {
   currentConversationId = null;

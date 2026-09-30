@@ -10,11 +10,10 @@
  * The frontend keeps talking to /api/chat and never changes.
  *
  * Environment variables (Netlify > Site configuration > Environment variables):
- *   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY   – to verify the user's session (optional: falls back
- *                                              to the public values in js/config.js)
+ *   SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY   – to verify the user's session
  *   MODEL_BACKEND   "gradio" (default) | "openai"
  *   -- gradio (Hugging Face Space) --
- *   HF_SPACE_URL     default https://vg253044-vix-ai.hf.space (the vg253044/Vix_AI Space)
+ *   HF_SPACE_URL     e.g. https://vg253044-vix-ai.hf.space (the vg253044/Vix_AI Space)
  *   HF_API_NAME      endpoint name from the Space's "Use via API" page. Vix_AI wires its
  *                    chat_fn to two events (a button click and a textbox submit) without an
  *                    explicit api_name, so Gradio auto-names them "chat_fn" and "chat_fn_1" —
@@ -31,10 +30,6 @@
  *   MODEL_BASE_URL, MODEL_NAME, MODEL_API_KEY
  */
 
-import { SUPABASE_URL as PUBLIC_SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY as PUBLIC_SUPABASE_KEY } from "../../js/config.js";
-
-const DEFAULT_HF_SPACE_URL = "https://vg253044-vix-ai.hf.space";
-
 const SYSTEM_PROMPT =
   "You are VIX AI, a professional multipurpose assistant. You reason carefully and help with " +
   "mathematics, science, engineering, mechatronics, programming, technology, education and general knowledge. " +
@@ -42,20 +37,23 @@ const SYSTEM_PROMPT =
 
 const MAX_MESSAGES = 30;
 const MAX_CHARS = 8000;
-const START_TIMEOUT_MS = 10000;
-const TIMEOUT_MS = 40000; // The ZeroGPU Space takes ~30s per reply; stay within Netlify's 60s sync limit.
+const TIMEOUT_MS = 25000; // Netlify functions have a short default timeout; keep replies within it.
 
-const json = (status, body) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
+const json = (statusCode, body) => ({
+  statusCode,
+  headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  body: JSON.stringify(body),
+});
+
+/** An error whose message is safe and useful to show the caller directly (vs. leaking internals). */
+function userError(message) {
+  return Object.assign(new Error(message), { userFacing: true });
+}
 
 async function verifyUser(authHeader) {
   const token = (authHeader || "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
-  const SUPABASE_URL = process.env.SUPABASE_URL || PUBLIC_SUPABASE_URL;
-  const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || PUBLIC_SUPABASE_KEY;
+  const { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } = process.env;
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) throw new Error("Server auth is not configured.");
   const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_PUBLISHABLE_KEY },
@@ -79,8 +77,8 @@ function extractText(value) {
 }
 
 async function callGradio(messages) {
-  const base = (process.env.HF_SPACE_URL || DEFAULT_HF_SPACE_URL).replace(/\/$/, "");
-  if (!base) throw new Error("HF_SPACE_URL is not set.");
+  const base = (process.env.HF_SPACE_URL || "").replace(/\/$/, "");
+  if (!base) throw userError("HF_SPACE_URL is not set.");
   const prefix = process.env.HF_API_PREFIX ?? "/gradio_api";
   const api = (process.env.HF_API_NAME || "chat_fn").replace(/^\//, "");
   const url = `${base}${prefix}/call/${api}`;
@@ -105,12 +103,12 @@ async function callGradio(messages) {
     data = [last, history, maxTokens, temperature];
   }
 
-  const start = await fetch(url, { method: "POST", headers, body: JSON.stringify({ data }), signal: AbortSignal.timeout(START_TIMEOUT_MS) });
-  if (!start.ok) throw new Error(`Model Space returned ${start.status} when starting the request.`);
+  const start = await fetch(url, { method: "POST", headers, body: JSON.stringify({ data }), signal: AbortSignal.timeout(TIMEOUT_MS) });
+  if (!start.ok) throw quotaAwareError(start.status, await start.text().catch(() => ""), "starting the request");
   const { event_id } = await start.json();
 
   const stream = await fetch(`${url}/${event_id}`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (!stream.ok) throw new Error(`Model Space returned ${stream.status} while reading the reply.`);
+  if (!stream.ok) throw quotaAwareError(stream.status, await stream.text().catch(() => ""), "reading the reply");
   const raw = await stream.text();
 
   // Server-sent events: "event: complete" followed by "data: [...]"
@@ -121,25 +119,40 @@ async function callGradio(messages) {
       const text = extractText(JSON.parse(line.slice(5)));
       if (text) return text;
     } else if (line.startsWith("data:") && event === "error") {
-      throw new Error("The model reported an error.");
+      const detail = line.slice(5);
+      throw quotaAwareError(429, detail, "generating a reply");
     }
   }
-  throw new Error("The model returned an empty reply.");
+  throw userError("The model returned an empty reply. Try rephrasing, or try again in a moment.");
+}
+
+/** Turns a Hugging Face ZeroGPU quota/rate-limit failure into a message that says so, instead of a bare status code. */
+function quotaAwareError(status, detail, when) {
+  const hitQuota = status === 429 || /quota|gpu.*(quota|limit)|rate.?limit|exceeded/i.test(detail || "");
+  if (hitQuota) {
+    return userError(
+      "The AI model has used up its free Hugging Face usage quota for now. " +
+      "This Space runs on free ZeroGPU hardware — anonymous requests share a very small daily quota. " +
+      "Set HF_TOKEN (a personal Hugging Face access token) in Netlify's environment variables to get a much larger " +
+      "per-account quota, or wait for the quota to reset and try again."
+    );
+  }
+  return userError(`Model Space returned ${status} when ${when}.`);
 }
 
 async function callOpenAI(messages) {
   const { MODEL_BASE_URL, MODEL_NAME, MODEL_API_KEY } = process.env;
-  if (!MODEL_BASE_URL) throw new Error("MODEL_BASE_URL is not set.");
+  if (!MODEL_BASE_URL) throw userError("MODEL_BASE_URL is not set.");
   const res = await fetch(`${MODEL_BASE_URL.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(MODEL_API_KEY ? { Authorization: `Bearer ${MODEL_API_KEY}` } : {}) },
     body: JSON.stringify({ model: MODEL_NAME, messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages] }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`Model endpoint returned ${res.status}.`);
+  if (!res.ok) throw quotaAwareError(res.status, await res.text().catch(() => ""), "answering");
   const out = await res.json();
   const text = out?.choices?.[0]?.message?.content;
-  if (!text) throw new Error("The model returned an empty reply.");
+  if (!text) throw userError("The model returned an empty reply. Try rephrasing, or try again in a moment.");
   return text;
 }
 
@@ -148,15 +161,15 @@ function callModel(messages) {
   return (process.env.MODEL_BACKEND || "gradio") === "openai" ? callOpenAI(messages) : callGradio(messages);
 }
 
-export default async (req) => {
-  if (req.method !== "POST") return json(405, { error: "Use POST." });
+exports.handler = async (event) => {
+  if (event.httpMethod !== "POST") return json(405, { error: "Use POST." });
 
   try {
-    const user = await verifyUser(req.headers.get("authorization"));
+    const user = await verifyUser(event.headers.authorization || event.headers.Authorization);
     if (!user) return json(401, { error: "Please sign in again." });
 
     let body;
-    try { body = JSON.parse((await req.text()) || "{}"); } catch { return json(400, { error: "Invalid request." }); }
+    try { body = JSON.parse(event.body || "{}"); } catch { return json(400, { error: "Invalid request." }); }
 
     const messages = (Array.isArray(body.messages) ? body.messages : [])
       .filter((m) => m && ["user", "assistant"].includes(m.role) && typeof m.content === "string" && m.content.trim())
@@ -170,8 +183,9 @@ export default async (req) => {
   } catch (err) {
     const timedOut = err?.name === "TimeoutError" || err?.name === "AbortError";
     console.error("chat function error:", err?.message);
-    return json(timedOut ? 504 : 502, {
-      error: timedOut ? "The model took too long to respond. It may be starting up; try again in a moment." : "The AI backend could not answer right now.",
-    });
+    if (timedOut) {
+      return json(504, { error: "The model took too long to respond. It may be starting up; try again in a moment." });
+    }
+    return json(502, { error: err?.userFacing ? err.message : "The AI backend could not answer right now." });
   }
 };
