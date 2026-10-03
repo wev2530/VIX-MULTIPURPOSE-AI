@@ -1,5 +1,6 @@
 // VIX AI service worker — caches the app shell so the UI still loads offline.
-// It never caches /api/chat or Supabase requests: those must always hit the network.
+// It never caches Supabase requests (auth, database, or the "chat" Edge Function):
+// those must always hit the network.
 const CACHE = "vix-shell-v1";
 const SHELL = [
   "/", "/index.html",

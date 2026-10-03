@@ -217,11 +217,16 @@ function renderThread() {
 function addThinking() {
   const wrap = document.createElement("div");
   wrap.className = "msg assistant"; wrap.id = "thinkingRow";
-  wrap.innerHTML = `<img class="mark" src="/assets/vix-logo.png" alt=""><div class="thinking"><i></i><i></i><i></i></div>`;
+  wrap.innerHTML = `<img class="mark" src="/assets/vix-logo.png" alt=""><div><div class="thinking"><i></i><i></i><i></i></div><div class="thinking-note" id="thinkingNote" hidden>Still working — longer replies can take up to a couple of minutes.</div></div>`;
   thread.appendChild(wrap); thread.hidden = false; emptyState.hidden = true;
   scrollToBottom();
+  thinkingNoteTimer = setTimeout(() => { const n = $("thinkingNote"); if (n) { n.hidden = false; scrollToBottom(); } }, 12000);
 }
-function removeThinking() { $("thinkingRow")?.remove(); }
+function removeThinking() {
+  clearTimeout(thinkingNoteTimer);
+  $("thinkingRow")?.remove();
+}
+let thinkingNoteTimer = null;
 
 // ---------- Sending ----------
 async function ensureConversation() {

@@ -1,19 +1,21 @@
-// Talks to our own backend endpoint (see js/config.js -> CHAT_ENDPOINT). No model credentials live in the browser.
+// Talks to VIX AI's Supabase Edge Function directly (see supabase/functions/chat/index.ts).
+// No model credentials live in the browser — supabase.functions.invoke() sends the current
+// user's session token automatically, and the Edge Function itself never returns it.
 import { supabase } from "./supabase.js";
-import { CHAT_ENDPOINT } from "./config.js";
 
 export async function sendChat(messages) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error("Your session expired. Please log in again.");
 
-  const res = await fetch(CHAT_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-    body: JSON.stringify({ messages }),
-  });
+  const { data, error } = await supabase.functions.invoke("chat", { body: { messages } });
 
-  let body = {};
-  try { body = await res.json(); } catch { /* non-JSON error page */ }
-  if (!res.ok) throw new Error(body.error || "The AI backend could not answer right now.");
-  return body.reply;
+  if (error) {
+    // supabase-js gives a generic error for non-2xx responses; pull our own message out of the
+    // response body when we can, so the person sees why it actually failed.
+    let detail = "";
+    try { detail = (await error.context?.json())?.error; } catch { /* body already consumed or not JSON */ }
+    throw new Error(detail || error.message || "The AI backend could not answer right now.");
+  }
+  if (!data?.reply) throw new Error("The AI backend could not answer right now.");
+  return data.reply;
 }
